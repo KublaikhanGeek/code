@@ -29,24 +29,29 @@ void TimerManager::loopForExecute(){
     lock.lock();
     if (!m_timer.empty()) {
         std::pop_heap(m_timer.begin(), m_timer.end(), std::greater<Timer>());
-        Timer *top = &(this->m_timer.back());
-        while (top->m_deadline <= this->m_timeline)
+        Timer top(this->m_timer.back());
+        while (this->m_isStart && top.m_deadline <= this->m_timeline)
         {
             //如果已经到了执行的时间,新开一个子线程执行任务
-            std::cout << "timer id: " << top->m_id << std::endl;
-            std::thread t(top->m_action);
-            t.detach(); //子线程分离
-            //top->m_action();
+            //std::cout << "timer id: " << top->m_id << std::endl;
+            //std::thread t(top->m_action);
+            //t.detach(); //子线程分离
+            lock.unlock();
+            top.m_action();
+            lock.lock();
+
+            if (m_timer.empty()) {
+                break;
+            }
 
             //从堆中删除
-            Timer newnode(*top);
             this->m_timer.pop_back();
 
-            if (newnode.m_isRepeat)
+            if (top.m_isRepeat)
             {
                 //如果是重复事件,则重新添加
                 lock.unlock();
-                this->startTimer(newnode.m_interval, newnode.m_action, newnode.m_isRepeat, newnode.m_id);
+                this->startTimer(top.m_interval, top.m_action, top.m_isRepeat, top.m_id);
                 lock.lock();
             }
 
@@ -54,14 +59,16 @@ void TimerManager::loopForExecute(){
                 break;
             }
             std::pop_heap(m_timer.begin(), m_timer.end(), std::greater<Timer>());
-            top = &(this->m_timer.back());
+            top = this->m_timer.back();
         }
         // 重新堆
         std::make_heap(m_timer.begin(), m_timer.end(), std::greater<Timer>());
     }
     lock.unlock();
     //执行一次后等待一个周期
-    std::this_thread::sleep_for(this->m_tick);
+    if (this->m_isStart) {
+        std::this_thread::sleep_for(this->m_tick);
+    }
     //周期增1
     this->m_timeline++;
     std::cout << "+++++++ circle: " << this->m_timeline << std::endl;
